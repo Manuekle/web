@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,297 +7,103 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Modelo para empresas (multi-tenancy)
-model Company {
-  id        String   @id @default(cuid())
-  name      String
-  logo      String?
-  address   String?
-  phone     String?
-  email     String?
+model Empleado {
+  id                Int                 @id @default(autoincrement())
+  cedula            String              @unique
+  nombre            String
+  apellido          String
+  huellaDactilar    String?             @unique // Almacena un hash o ID único de la huella
+  registros         RegistroAsistencia[]
+  activo            Boolean             @default(true)
+  fechaRegistro     DateTime            @default(now())
+  ultimaActualizacion DateTime?         @updatedAt
+}
+
+model Visitante {
+  id            Int                 @id @default(autoincrement())
+  cedula        String              @unique
+  nombre        String
+  apellido      String
+  empresa       String?
+  motivo        String?
+  registros     RegistroVisitante[]
+  fechaRegistro DateTime            @default(now())
+}
+
+model RegistroAsistencia {
+  id             Int           @id @default(autoincrement())
+  empleadoId     Int
+  empleado       Empleado      @relation(fields: [empleadoId], references: [id])
+  tipoRegistro   TipoRegistro
+  fecha          DateTime      @default(now())
+  metodoRegistro MetodoRegistro
+  observacion    String?
+  deviceId       String?       // ID del dispositivo que registró la asistencia
+}
+
+model RegistroVisitante {
+  id              Int       @id @default(autoincrement())
+  visitanteId     Int
+  visitante       Visitante @relation(fields: [visitanteId], references: [id])
+  entrada         DateTime  @default(now())
+  salida          DateTime?
+  motivo          String
+  personaVisitada String?
+}
+
+// Añadimos modelos para dispositivos y usuarios
+model Dispositivo {
+  id            String    @id
+  nombre        String
+  ubicacion     String
+  token         String    @unique
+  estado        String    @default("offline")
+  ultimaSincronizacion DateTime?
+  firmware      String?
+  configuracion Json?
+  comandos    Comando[]
+}
+
+model Usuario {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  nombre    String
+  password  String   // En producción, almacenar hash de contraseña
+  rol       Rol
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Relaciones
-  departments       Department[]
-  employees         Employee[]
-  devices           Device[]
-  schedules         Schedule[]
-  attendanceRecords AttendanceRecord[]
-  visitors          Visitor[]
-  users             User[]
-  holidays          Holiday[]
-
-  // Configuración específica de la empresa
-  settings CompanySettings?
 }
 
-// Configuraciones específicas por empresa
-model CompanySettings {
-  id                 String   @id @default(cuid())
-  companyId          String   @unique
-  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  workdayStartTime   String   @default("09:00")
-  workdayEndTime     String   @default("18:00")
-  lunchStartTime     String?  @default("13:00")
-  lunchEndTime       String?  @default("14:00")
-  gracePeriodMinutes Int      @default(15)
-  weekendDays        String[] @default(["SATURDAY", "SUNDAY"])
-  overtimeEnabled    Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+enum TipoRegistro {
+  ENTRADA
+  SALIDA
+  PERMISO
+  COMISION
 }
 
-// Departamentos dentro de una empresa
-model Department {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employees   Employee[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relaciones
-  employees Employee[]
-
-  @@unique([companyId, name])
+enum MetodoRegistro {
+  HUELLA
+  CEDULA
+  MANUAL
 }
 
-// Empleados
-model Employee {
-  id              String      @id @default(cuid())
-  employeeId      String // ID interno de la empresa
-  firstName       String
-  lastName        String
-  email           String?
-  phone           String?
-  position        String?
-  fingerprintId   String? // ID de la huella digital en el sistema
-  isActive        Boolean     @default(true)
-  hireDate        DateTime
-  terminationDate DateTime?
-  companyId       String
-  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  departmentId    String?
-  department      Department? @relation(fields: [departmentId], references: [id])
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  // Relaciones
-  attendanceRecords AttendanceRecord[]
-  schedules         EmployeeSchedule[]
-  leaves            Leave[]
-  user              User?
-
-  @@unique([companyId, employeeId])
-  @@unique([companyId, fingerprintId])
-  @@index([companyId, isActive])
+enum Rol {
+  admin
+  hr
 }
 
-// Dispositivos de registro (Arduino con sensor de huella)
-model Device {
-  id             String    @id @default(cuid())
-  deviceId       String // ID único del dispositivo
-  name           String
-  location       String?
-  ipAddress      String?
-  lastConnection DateTime?
-  isActive       Boolean   @default(true)
-  companyId      String
-  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+model Comando {
+  id          String    @id @default(cuid())
+  deviceId    String
+  action      String
+  params      Json      @default("{}")
+  status      String    @default("pending") // pending, completed, failed
+  result      String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+  
+  dispositivo Dispositivo @relation(fields: [deviceId], references: [id])
 
-  // Relaciones
-  attendanceRecords AttendanceRecord[]
-
-  @@unique([companyId, deviceId])
-}
-
-// Horarios de trabajo
-model Schedule {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  startTime   String // Formato "HH:MM"
-  endTime     String // Formato "HH:MM"
-  workDays    String[] // ["MONDAY", "TUESDAY", ...]
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relaciones
-  employeeSchedules EmployeeSchedule[]
-
-  @@unique([companyId, name])
-}
-
-// Relación entre empleados y horarios
-model EmployeeSchedule {
-  id         String    @id @default(cuid())
-  employeeId String
-  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  scheduleId String
-  schedule   Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  startDate  DateTime
-  endDate    DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  @@unique([employeeId, scheduleId, startDate])
-}
-
-// Registros de asistencia
-model AttendanceRecord {
-  id         String       @id @default(cuid())
-  employeeId String
-  employee   Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  deviceId   String?
-  device     Device?      @relation(fields: [deviceId], references: [id])
-  companyId  String
-  company    Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  timestamp  DateTime
-  type       RecordType
-  status     RecordStatus @default(APPROVED)
-  notes      String?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-
-  @@index([employeeId, timestamp])
-  @@index([companyId, timestamp])
-}
-
-// Tipos de registro de asistencia
-enum RecordType {
-  CLOCK_IN
-  CLOCK_OUT
-  BREAK_START
-  BREAK_END
-  OVERTIME_START
-  OVERTIME_END
-}
-
-// Estado del registro
-enum RecordStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  MODIFIED
-}
-
-// Permisos, vacaciones, ausencias
-model Leave {
-  id         String      @id @default(cuid())
-  employeeId String
-  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  type       LeaveType
-  startDate  DateTime
-  endDate    DateTime
-  status     LeaveStatus @default(PENDING)
-  reason     String?
-  approvedBy String?
-  approvedAt DateTime?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-
-  @@index([employeeId, startDate, endDate])
-}
-
-// Tipos de ausencia
-enum LeaveType {
-  VACATION
-  SICK
-  PERSONAL
-  MATERNITY
-  PATERNITY
-  BEREAVEMENT
-  UNPAID
-  OTHER
-}
-
-// Estado de la solicitud de ausencia
-enum LeaveStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-// Días festivos por empresa
-model Holiday {
-  id          String   @id @default(cuid())
-  name        String
-  date        DateTime
-  description String?
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@unique([companyId, date, name])
-}
-
-// Visitantes
-model Visitor {
-  id          String   @id @default(cuid())
-  firstName   String
-  lastName    String
-  email       String?
-  phone       String?
-  company     String? // Empresa de origen del visitante
-  purpose     String?
-  companyId   String // Empresa que visita
-  hostCompany Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relaciones
-  visits VisitorRecord[]
-}
-
-// Registros de visitas
-model VisitorRecord {
-  id        String    @id @default(cuid())
-  visitorId String
-  visitor   Visitor   @relation(fields: [visitorId], references: [id], onDelete: Cascade)
-  checkIn   DateTime
-  checkOut  DateTime?
-  hostName  String? // Nombre de la persona que recibe la visita
-  notes     String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@index([visitorId, checkIn])
-}
-
-// Usuarios del sistema (administradores, supervisores)
-model User {
-  id         String    @id @default(cuid())
-  email      String
-  password   String // Almacenar hash, no contraseña en texto plano
-  firstName  String
-  lastName   String
-  role       UserRole
-  isActive   Boolean   @default(true)
-  lastLogin  DateTime?
-  companyId  String
-  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employeeId String?   @unique
-  employee   Employee? @relation(fields: [employeeId], references: [id])
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  @@unique([companyId, email])
-}
-
-// Roles de usuario
-enum UserRole {
-  SUPER_ADMIN // Administrador de la plataforma
-  ADMIN // Administrador de empresa
-  MANAGER // Gerente/Supervisor
-  EMPLOYEE // Empleado con acceso limitado
-  RECEPTIONIST // Recepcionista (registro de visitantes)
+  @@index([deviceId])
+  @@index([status])
 }

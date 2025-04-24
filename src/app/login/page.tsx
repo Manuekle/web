@@ -1,200 +1,218 @@
 "use client";
 
-import { useState } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { z } from "zod";
+import type React from "react";
 
-// Esquema de validación
-const loginSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
-  companyId: z.string().optional(),
-});
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Fingerprint, Lock, User, AlertCircle } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import { AlertDescription } from "@/components/ui/alert";
 
-export default function Login() {
+export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+  const { user, login, error, loading } = useAuth();
+  const [adminEmail, setAdminEmail] = useState();
+  const [adminPassword, setAdminPassword] = useState();
+  const [hrEmail, setHrEmail] = useState();
+  const [hrPassword, setHrPassword] = useState();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    companyId: "",
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [authError, setAuthError] = useState("");
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    // Limpiar error del campo cuando el usuario escribe
-    if (errors[name]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
+  // Redirigir si ya está autenticado
+  useEffect(() => {
+    if (user) {
+      router.push("/dashboard");
     }
-  };
+  }, [user, router]);
 
-  const validateForm = () => {
-    try {
-      loginSchema.parse(formData);
-      setErrors({});
-      return true;
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const newErrors: Record<string, string> = {};
-        error.errors.forEach((err) => {
-          if (err.path[0]) {
-            newErrors[err.path[0] as string] = err.message;
-          }
-        });
-        setErrors(newErrors);
-      }
-      return false;
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthError("");
-
-    if (!validateForm()) return;
-
-    setIsLoading(true);
-
-    try {
-      const result = await signIn("credentials", {
-        redirect: false,
-        email: formData.email,
-        password: formData.password,
-        companyId: formData.companyId || undefined,
-      });
-
-      if (result?.error) {
-        setAuthError(result.error);
-        setIsLoading(false);
-        return;
-      }
-
-      router.push(callbackUrl);
-    } catch (error) {
-      setAuthError("Ocurrió un error al iniciar sesión");
-      setIsLoading(false);
+    setIsSubmitting(true);
+    const success = await login(adminEmail, adminPassword);
+    if (success) {
+      router.push("/dashboard");
     }
+    setIsSubmitting(false);
   };
+
+  const handleHRLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    const success = await login(hrEmail, hrPassword);
+    if (success) {
+      router.push("/dashboard");
+    }
+    setIsSubmitting(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-gray-50">
-      <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-lg shadow-md">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Iniciar Sesión</h1>
-          <p className="mt-2 text-gray-600">
-            Ingresa tus credenciales para acceder al sistema
-          </p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white to-gray-100 dark:from-black dark:to-zinc-900 p-4">
+      <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8 items-center">
+        <div className="hidden md:flex flex-col items-center justify-center space-y-6">
+          <div className="relative w-64 h-64">
+            <div className="absolute inset-0 bg-black/5 dark:bg-white/5 rounded-full animate-pulse"></div>
+            <div className="absolute inset-4 bg-black/10 dark:bg-white/10 rounded-full animate-pulse animation-delay-200"></div>
+            <div className="absolute inset-8 bg-black/15 dark:bg-white/15 rounded-full animate-pulse animation-delay-500"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Fingerprint className="h-32 w-32 text-black dark:text-white" />
+            </div>
+          </div>
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-bold">
+              Sistema de Control de Asistencia
+            </h1>
+            <p className="text-muted-foreground max-w-md">
+              Gestión biométrica de asistencia para empleados y visitantes con
+              tecnología de reconocimiento de huella dactilar.
+            </p>
+          </div>
         </div>
 
-        {authError && (
-          <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-            {authError}
-          </div>
-        )}
-
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Correo Electrónico
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              required
-              value={formData.email}
-              onChange={handleChange}
-              className={`mt-1 block w-full px-3 py-2 border ${
-                errors.email ? "border-red-500" : "border-gray-300"
-              } rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
-            />
-            {errors.email && (
-              <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+        <Card className="w-full shadow-lg border-black/5 dark:border-white/5">
+          <CardHeader className="space-y-1">
+            <div className="flex md:hidden items-center justify-center mb-4">
+              <Fingerprint className="h-16 w-16 text-black dark:text-white" />
+            </div>
+            <CardTitle className="text-2xl text-center">
+              Acceso al Sistema
+            </CardTitle>
+            <CardDescription className="text-center">
+              Ingrese sus credenciales para acceder al sistema
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {error && (
+              <div className="mb-4 flex flex-row items-center border px-4 py-3 rounded-lg border-red-400 text-red-400 gap-4">
+                <AlertCircle className="w-4 h-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </div>
             )}
-          </div>
 
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Contraseña
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              value={formData.password}
-              onChange={handleChange}
-              className={`mt-1 block w-full px-3 py-2 border ${
-                errors.password ? "border-red-500" : "border-gray-300"
-              } rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
-            />
-            {errors.password && (
-              <p className="mt-1 text-sm text-red-600">{errors.password}</p>
-            )}
-          </div>
+            <Tabs defaultValue="admin" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="admin" className="flex items-center gap-2">
+                  <Lock className="h-4 w-4" />
+                  Administrador
+                </TabsTrigger>
+                <TabsTrigger value="hr" className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Recursos Humanos
+                </TabsTrigger>
+              </TabsList>
 
-          <div>
-            <label
-              htmlFor="companyId"
-              className="block text-sm font-medium text-gray-700"
-            >
-              ID de Empresa (opcional)
-            </label>
-            <input
-              id="companyId"
-              name="companyId"
-              type="text"
-              value={formData.companyId}
-              onChange={handleChange}
-              className={`mt-1 block w-full px-3 py-2 border ${
-                errors.companyId ? "border-red-500" : "border-gray-300"
-              } rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500`}
-            />
-            {errors.companyId && (
-              <p className="mt-1 text-sm text-red-600">{errors.companyId}</p>
-            )}
-          </div>
+              <TabsContent value="admin">
+                <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-email">Correo electrónico</Label>
+                    <Input
+                      id="admin-email"
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      placeholder="admin@ejemplo.com"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="admin-password">Contraseña</Label>
+                      <a
+                        href="#"
+                        className="text-xs text-primary hover:underline"
+                      >
+                        ¿Olvidó su contraseña?
+                      </a>
+                    </div>
+                    <Input
+                      id="admin-password"
+                      type="password"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting
+                      ? "Iniciando sesión..."
+                      : "Acceder como Administrador"}
+                  </Button>
+                </form>
+              </TabsContent>
 
-          <div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              {isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-600">
-            ¿No tienes una cuenta?{" "}
-            <Link
-              href="/register"
-              className="text-blue-600 hover:text-blue-500"
-            >
-              Registra tu empresa
-            </Link>
-          </p>
-        </div>
+              <TabsContent value="hr">
+                <form onSubmit={handleHRLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="hr-email">Correo electrónico</Label>
+                    <Input
+                      id="hr-email"
+                      type="email"
+                      value={hrEmail}
+                      onChange={(e) => setHrEmail(e.target.value)}
+                      placeholder="rrhh@ejemplo.com"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="hr-password">Contraseña</Label>
+                      <a
+                        href="#"
+                        className="text-xs text-primary hover:underline"
+                      >
+                        ¿Olvidó su contraseña?
+                      </a>
+                    </div>
+                    <Input
+                      id="hr-password"
+                      type="password"
+                      value={hrPassword}
+                      onChange={(e) => setHrPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting
+                      ? "Iniciando sesión..."
+                      : "Acceder como Recursos Humanos"}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+          <CardFooter className="flex flex-col space-y-2">
+            <div className="text-xs text-center text-muted-foreground">
+              Al acceder, acepta los términos de servicio y la política de
+              privacidad.
+            </div>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );
